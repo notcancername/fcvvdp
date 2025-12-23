@@ -17,6 +17,7 @@ const std = @import("std");
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
+    const zlib_rs = b.option(bool, "zlib_rs", "enable zlib-rs instead of zlib") orelse false;
     const strip = if (optimize == .ReleaseFast) true else false;
     const flto = b.option(bool, "flto", "enable Link Time Optimization, defaults to false") orelse false;
     const options = b.addOptions();
@@ -89,7 +90,21 @@ pub fn build(b: *std.Build) void {
     cvvdpenc.root_module.addIncludePath(b.path("."));
     cvvdpenc.root_module.linkLibrary(cvvdp);
     cvvdpenc.root_module.linkLibrary(spng);
-    cvvdpenc.root_module.linkSystemLibrary("z_rs", .{ .preferred_link_mode = .static });
-    cvvdpenc.root_module.linkSystemLibrary("unwind", .{ .preferred_link_mode = .static });
+
+    if (zlib_rs) {
+        cvvdpenc.root_module.linkSystemLibrary("z_rs", .{ .preferred_link_mode = .static });
+        cvvdpenc.root_module.linkSystemLibrary("unwind", .{ .preferred_link_mode = .static });
+    } else {
+        if (b.systemIntegrationOption("z", .{ .default = false })) {
+            cvvdpenc.root_module.linkSystemLibrary("z", .{});
+        } else {
+            if (b.lazyDependency("zlib", .{
+                .target = target,
+                .optimize = optimize,
+            })) |zlib_dep| {
+                cvvdpenc.root_module.linkLibrary(zlib_dep.artifact("z"));
+            }
+        }
+    }
     b.installArtifact(cvvdpenc);
 }
